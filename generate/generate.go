@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/moby/sys/capability"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/runtime-tools/generate/seccomp"
+	"github.com/opencontainers/runtime-tools/validate"
 	capsCheck "github.com/opencontainers/runtime-tools/validate/capabilities"
 )
 
@@ -343,25 +345,144 @@ func (g *Generator) Spec() *rspec.Spec {
 	return g.Config
 }
 
-// Save writes the configuration into w.
-func (g *Generator) Save(w io.Writer, exportOpts ExportOptions) (err error) {
-	var data []byte
-
-	if g.Config.Linux != nil {
-		buf, err := json.Marshal(g.Config.Linux)
+// Clone returns a deep copy of the Generator g. Changes to the clone
+// (or to its Config) do not affect g, so a caller can merge changes on
+// the clone and only commit them once every stage of its pipeline has
+// succeeded.
+func (g *Generator) Clone() (Generator, error) {
+	var config *rspec.Spec
+	if g.Config != nil {
+		buf, err := json.Marshal(g.Config)
 		if err != nil {
-			return err
+			return Generator{}, err
 		}
-		if string(buf) == "{}" {
-			g.Config.Linux = nil
+		var copied rspec.Spec
+		if err := json.Unmarshal(buf, &copied); err != nil {
+			return Generator{}, err
 		}
+		config = &copied
+	}
+
+	envCache := map[string]int{}
+	if config != nil && config.Process != nil {
+		envCache = createEnvCacheMap(config.Process.Env)
+	}
+
+	return Generator{
+		Config:       config,
+		HostSpecific: g.HostSpecific,
+		envMap:       envCache,
+	}, nil
+}
+
+// Platform returns the platform the configuration targets, inferred
+// from its platform-specific sections ("linux", "windows" or
+// "solaris"), or "" if no platform-specific section is set.
+func (g *Generator) Platform() string {
+	if g.Config == nil {
+		return ""
+	}
+	switch {
+	case g.Config.Linux != nil:
+		return "linux"
+	case g.Config.Windows != nil:
+		return "windows"
+	case g.Config.Solaris != nil:
+		return "solaris"
+	}
+	return ""
+}
+
+// isEmptySection reports whether v marshals to an empty JSON object.
+func isEmptySection(v any) bool {
+	buf, err := json.Marshal(v)
+	return err == nil && string(buf) == "{}"
+}
+
+// CheckPlatform returns an error if the configuration contains
+// platform-specific sections that conflict with the target platform.
+// The conflicting JSON field (for example "linux" or "windows") is
+// named in the error.
+func (g *Generator) CheckPlatform(platform string) error {
+	switch platform {
+	case "linux", "windows", "solaris", "freebsd":
+	default:
+		return fmt.Errorf("platform: unsupported platform %q", platform)
+	}
+
+	if g.Config == nil {
+		return nil
+	}
+
+	// Keep this list sorted so the reported conflict is deterministic.
+	sections := []struct {
+		name string
+		set  bool
+	}{
+		{"linux", g.Config.Linux != nil && !isEmptySection(g.Config.Linux)},
+		{"solaris", g.Config.Solaris != nil && !isEmptySection(g.Config.Solaris)},
+		{"windows", g.Config.Windows != nil && !isEmptySection(g.Config.Windows)},
+	}
+	for _, section := range sections {
+		if section.set && section.name != platform {
+			return fmt.Errorf("platform conflict: %s is set, but the target platform is %q", section.name, platform)
+		}
+	}
+	return nil
+}
+
+// Check verifies the generated configuration before it is committed:
+// it must not contain platform-specific sections conflicting with
+// platform, and it must be readable by the same-version configuration
+// validator (the one used by "oci-runtime-tool validate"). Only checks
+// that require neither a bundle on disk nor network access are run.
+func (g *Generator) Check(platform string) error {
+	if err := g.CheckPlatform(platform); err != nil {
+		return err
+	}
+
+	switch platform {
+	case "linux", "solaris", "windows":
+	default:
+		// The configuration validator has no rules for this platform;
+		// the section-conflict check above still applies.
+		return nil
+	}
+
+	v, err := validate.NewValidator(g.Config, "", g.HostSpecific, platform)
+	if err != nil {
+		return err
+	}
+	return v.CheckConfig()
+}
+
+// marshal returns the JSON encoding of the configuration, honoring
+// exportOpts. It does not modify g, so repeated calls are
+// deterministic.
+func (g *Generator) marshal(exportOpts ExportOptions) ([]byte, error) {
+	config := g.Config
+	if config == nil {
+		return nil, fmt.Errorf("cannot marshal a nil configuration")
+	}
+
+	if config.Linux != nil && isEmptySection(config.Linux) {
+		copied := *config
+		copied.Linux = nil
+		config = &copied
 	}
 
 	if exportOpts.Seccomp {
-		data, err = json.MarshalIndent(g.Config.Linux.Seccomp, "", "\t")
-	} else {
-		data, err = json.MarshalIndent(g.Config, "", "\t")
+		if config.Linux == nil || config.Linux.Seccomp == nil {
+			return nil, fmt.Errorf("linux.seccomp: cannot export a seccomp profile, the configuration does not have one")
+		}
+		return json.MarshalIndent(config.Linux.Seccomp, "", "\t")
 	}
+	return json.MarshalIndent(config, "", "\t")
+}
+
+// Save writes the configuration into w.
+func (g *Generator) Save(w io.Writer, exportOpts ExportOptions) (err error) {
+	data, err := g.marshal(exportOpts)
 	if err != nil {
 		return err
 	}
@@ -374,14 +495,51 @@ func (g *Generator) Save(w io.Writer, exportOpts ExportOptions) (err error) {
 	return nil
 }
 
-// SaveToFile writes the configuration into a file.
+// SaveToFile writes the configuration into a file. The write is
+// atomic: the configuration is marshaled in full and committed with a
+// rename, so a failure at any point leaves a pre-existing file
+// untouched.
 func (g *Generator) SaveToFile(path string, exportOpts ExportOptions) error {
-	f, err := os.Create(path)
+	data, err := g.marshal(exportOpts)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return g.Save(f, exportOpts)
+	return writeFileAtomic(path, data)
+}
+
+// writeFileAtomic writes data to path by writing a temporary file in
+// the same directory and renaming it over path, so path is never left
+// partially written.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	// If the rename below succeeds, this removes nothing.
+	defer os.Remove(tmpName)
+
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		// Overwriting an existing file: keep its permissions.
+		mode = fi.Mode().Perm()
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // SetVersion sets g.Config.Version.

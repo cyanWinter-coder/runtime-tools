@@ -158,40 +158,55 @@ var generateCommand = cli.Command{
 	Flags:  generateFlags,
 	Before: before,
 	Action: func(context *cli.Context) error {
-		// Start from the default template.
-		specgen, err := generate.New(context.String("os"))
-		if err != nil {
-			return err
-		}
-
-		var template string
-		if context.IsSet("template") {
-			template = context.String("template")
-		}
-		if template != "" {
+		// Stage 1: load the base configuration (the defaults for the
+		// target OS, or the template) without touching any output.
+		var specgen generate.Generator
+		var err error
+		if template := context.String("template"); template != "" {
 			specgen, err = generate.NewFromFile(template)
-			if err != nil {
-				return err
-			}
+		} else {
+			specgen, err = generate.New(context.String("os"))
 		}
-
-		err = setupSpec(&specgen, context)
 		if err != nil {
 			return err
 		}
 
+		// Stage 2: merge the requested changes on a copy of the input
+		// configuration, so a failure here leaves the input (and any
+		// previous output) untouched.
+		workgen, err := specgen.Clone()
+		if err != nil {
+			return err
+		}
+		if err := setupSpec(&workgen, context); err != nil {
+			return err
+		}
+
+		// Stage 3: make sure the merged configuration is consistent
+		// (no platform conflicts, valid capabilities and seccomp
+		// settings, ...) and readable by the same-version validator
+		// before committing anything.
+		platform := context.String("os")
+		if inferred := workgen.Platform(); inferred != "" {
+			if context.IsSet("os") && platform != inferred {
+				return fmt.Errorf("platform conflict: --os=%q, but the configuration targets %q", platform, inferred)
+			}
+			platform = inferred
+		}
+		if err := workgen.Check(platform); err != nil {
+			return err
+		}
+
+		// Stage 4: commit the result. Writing to a file is atomic, so
+		// the target is only replaced once the configuration has been
+		// fully generated and validated.
 		var exportOpts generate.ExportOptions
 		exportOpts.Seccomp = context.Bool("linux-seccomp-only")
 
 		if context.IsSet("output") {
-			err = specgen.SaveToFile(context.String("output"), exportOpts)
-		} else {
-			err = specgen.Save(os.Stdout, exportOpts)
+			return workgen.SaveToFile(context.String("output"), exportOpts)
 		}
-		if err != nil {
-			return err
-		}
-		return nil
+		return workgen.Save(os.Stdout, exportOpts)
 	},
 }
 
@@ -227,7 +242,9 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		}
 	}
 
-	g.SetRootPath(context.String("rootfs-path"))
+	if context.IsSet("rootfs-path") {
+		g.SetRootPath(context.String("rootfs-path"))
+	}
 
 	if context.IsSet("rootfs-readonly") {
 		g.SetRootReadonly(context.Bool("rootfs-readonly"))
@@ -253,7 +270,9 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		g.SetProcessSelinuxLabel(context.String("linux-selinux-label"))
 	}
 
-	g.SetProcessCwd(context.String("process-cwd"))
+	if context.IsSet("process-cwd") {
+		g.SetProcessCwd(context.String("process-cwd"))
+	}
 
 	if context.IsSet("linux-apparmor") {
 		g.SetProcessApparmorProfile(context.String("linux-apparmor"))
@@ -363,7 +382,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapability(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -373,7 +392,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapabilityAmbient(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -383,7 +402,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapabilityBounding(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -393,7 +412,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapabilityEffective(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -403,7 +422,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapabilityInheritable(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -413,7 +432,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.AddProcessCapabilityPermitted(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -423,7 +442,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(addCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapability(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -433,7 +452,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(dropCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapabilityAmbient(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -443,7 +462,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(dropCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapabilityBounding(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -453,7 +472,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(dropCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapabilityEffective(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -463,7 +482,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(dropCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapabilityInheritable(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -473,7 +492,7 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		parts := strings.Split(dropCaps, ",")
 		for _, part := range parts {
 			if err := g.DropProcessCapabilityPermitted(part); err != nil {
-				return err
+				return fmt.Errorf("process.capabilities: %w", err)
 			}
 		}
 	}
@@ -1017,8 +1036,10 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		g.SetWindowsServicing(context.Bool("windows-servicing"))
 	}
 
-	err := addSeccomp(context, g)
-	return err
+	if err := addSeccomp(context, g); err != nil {
+		return fmt.Errorf("linux.seccomp: %w", err)
+	}
+	return nil
 }
 
 func parseConsoleSize(consoleSize string) (uint, uint, error) {

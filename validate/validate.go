@@ -107,9 +107,23 @@ func NewValidatorFromPath(bundlePath string, hostSpecific bool, platform string)
 func (v *Validator) CheckAll() error {
 	var errs *multierror.Error
 	errs = multierror.Append(errs, v.CheckJSONSchema())
-	errs = multierror.Append(errs, v.CheckPlatform())
+	errs = multierror.Append(errs, v.CheckConfig())
 	errs = multierror.Append(errs, v.CheckRoot())
 	errs = multierror.Append(errs, v.CheckMandatoryFields())
+
+	return errs.ErrorOrNil()
+}
+
+// CheckConfig checks the parts of the configuration that are
+// self-contained: unlike CheckAll it requires neither a bundle on disk
+// nor network access, so it can be used to verify a configuration
+// before it is committed to one. Mandatory-field enforcement is
+// deliberately left to CheckAll: generators may legitimately produce
+// configurations that still need bundle-specific fields (such as
+// windows.layerFolders) filled in.
+func (v *Validator) CheckConfig() error {
+	var errs *multierror.Error
+	errs = multierror.Append(errs, v.CheckPlatform())
 	errs = multierror.Append(errs, v.CheckSemVer())
 	errs = multierror.Append(errs, v.CheckMounts())
 	errs = multierror.Append(errs, v.CheckProcess())
@@ -375,7 +389,7 @@ func (v *Validator) CheckProcess() (errs error) {
 			errs = multierror.Append(errs, v.CheckCapabilities())
 		}
 
-		if len(process.ApparmorProfile) > 0 {
+		if len(process.ApparmorProfile) > 0 && v.bundlePath != "" {
 			profilePath := filepath.Join(v.bundlePath, v.spec.Root.Path, "/etc/apparmor.d", process.ApparmorProfile)
 			_, err := os.Stat(profilePath)
 			if err != nil {
