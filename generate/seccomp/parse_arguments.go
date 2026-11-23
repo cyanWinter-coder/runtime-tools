@@ -20,17 +20,21 @@ func parseArguments(delimArgs []string) ([]rspec.LinuxSeccompArg, error) {
 
 	// Correct number of parameters passed with syscall
 	if numberOfArgs == 5 {
-		syscallIndex, err := strconv.ParseUint(delimArgs[1], 10, 0)
+		// The index selects one of the (64 bit) seccomp data fields, so it
+		// is parsed at the same full width before being narrowed to the
+		// spec's uint index. Values and the masked-equal second operand are
+		// unsigned 64 bit quantities on every ABI.
+		syscallIndex, err := strconv.ParseUint(delimArgs[1], 10, argBitWidth)
 		if err != nil {
 			return nilArgSlice, err
 		}
 
-		syscallValue, err := strconv.ParseUint(delimArgs[2], 10, 64)
+		syscallValue, err := strconv.ParseUint(delimArgs[2], 10, argBitWidth)
 		if err != nil {
 			return nilArgSlice, err
 		}
 
-		syscallValueTwo, err := strconv.ParseUint(delimArgs[3], 10, 64)
+		syscallValueTwo, err := strconv.ParseUint(delimArgs[3], 10, argBitWidth)
 		if err != nil {
 			return nilArgSlice, err
 		}

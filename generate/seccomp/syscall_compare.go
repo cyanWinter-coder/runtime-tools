@@ -122,3 +122,41 @@ func neitherHasArgs(config1, config2 *rspec.LinuxSyscall) bool {
 func firstParamOnlyHasArgs(config1, config2 *rspec.LinuxSyscall) bool {
 	return !hasArguments(config1) && hasArguments(config2)
 }
+
+// ruleAlreadyCovered reports whether every name of newRule is already part of
+// an existing rule whose action and argument comparisons are identical. It is
+// used to collapse syscall aliases (for example the same call known under
+// several ABI specific names) into one rule instead of emitting duplicate
+// rules that different architectures could interpret differently. Argument
+// comparisons are compared as a whole, so index, 64 bit values and operator
+// have to match exactly.
+func ruleAlreadyCovered(newRule *rspec.LinuxSyscall, syscalls []rspec.LinuxSyscall) bool {
+	for _, existing := range syscalls {
+		if existing.Action != newRule.Action || !sameArgs(newRule, &existing) {
+			continue
+		}
+		if namesContained(newRule.Names, existing.Names) {
+			return true
+		}
+	}
+	return false
+}
+
+// namesContained reports whether every name in wanted is present in available.
+func namesContained(wanted, available []string) bool {
+	for _, name := range wanted {
+		if !containsName(available, name) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsName(names []string, wanted string) bool {
+	for _, name := range names {
+		if name == wanted {
+			return true
+		}
+	}
+	return false
+}

@@ -19,7 +19,13 @@ type SyscallOpts struct {
 }
 
 // ParseSyscallFlag takes a SyscallOpts struct and the seccomp configuration
-// and sets the new syscall rule accordingly
+// and sets the new syscall rule accordingly.
+//
+// Failures are reported instead of being downgraded: an unknown action returns
+// its original value in the error, and an unknown syscall name is rejected
+// before the configuration is touched. When the same syscall (including an
+// alias merged into a multi name rule) is already covered by an identical
+// rule, the input is dropped so the generated filter stays free of duplicates.
 func ParseSyscallFlag(args SyscallOpts, config *rspec.LinuxSeccomp) error {
 	var arguments []string
 	if args.Index != "" && args.Value != "" && args.ValueTwo != "" && args.Operator != "" {
@@ -31,36 +37,53 @@ func ParseSyscallFlag(args SyscallOpts, config *rspec.LinuxSeccomp) error {
 		arguments = []string{args.Action, args.Syscall}
 	}
 
-	action, _ := parseAction(arguments[0])
+	action, err := parseAction(arguments[0])
+	if err != nil {
+		return err
+	}
 	if action == config.DefaultAction && args.argsAreEmpty() {
 		// default already set, no need to make changes
 		return nil
 	}
 
-	var newSyscall rspec.LinuxSyscall
 	numOfArgs := len(arguments)
-	if numOfArgs == 6 || numOfArgs == 2 {
-		argStruct, err := parseArguments(arguments[1:])
-		if err != nil {
-			return err
-		}
-		newSyscall = newSyscallStruct(arguments[1], action, argStruct)
-	} else {
+	if numOfArgs != 6 && numOfArgs != 2 {
 		return fmt.Errorf("incorrect number of arguments to ParseSyscall: %d", numOfArgs)
 	}
 
-	descison, err := decideCourseOfAction(&newSyscall, config.Syscalls)
+	argStruct, err := parseArguments(arguments[1:])
 	if err != nil {
 		return err
 	}
-	delimDescison := strings.Split(descison, ":")
 
-	if delimDescison[0] == seccompAppend {
+	newSyscall := newSyscallStruct(arguments[1], action, argStruct)
+
+	// Reject syscalls the generator cannot resolve before mutating the
+	// configuration, so an unknown name can never end up allowed.
+	for _, name := range newSyscall.Names {
+		if err := ensureKnownSyscall(name); err != nil {
+			return err
+		}
+	}
+
+	// Merge aliases into an existing equivalent rule instead of emitting a
+	// second rule that could be interpreted differently across ABIs.
+	if ruleAlreadyCovered(&newSyscall, config.Syscalls) {
+		return nil
+	}
+
+	decision, err := decideCourseOfAction(&newSyscall, config.Syscalls)
+	if err != nil {
+		return err
+	}
+	delimDecision := strings.Split(decision, ":")
+
+	if delimDecision[0] == seccompAppend {
 		config.Syscalls = append(config.Syscalls, newSyscall)
 	}
 
-	if delimDescison[0] == seccompOverwrite {
-		indexForOverwrite, err := strconv.ParseInt(delimDescison[1], 10, 32)
+	if delimDecision[0] == seccompOverwrite {
+		indexForOverwrite, err := strconv.ParseInt(delimDecision[1], 10, 32)
 		if err != nil {
 			return err
 		}
@@ -78,11 +101,14 @@ var actions = map[string]rspec.LinuxSeccompAction{
 	"trap":  rspec.ActTrap,
 }
 
-// Take passed action, return the SCMP_ACT_<ACTION> version of it
+// parseAction maps the user facing action name to its SCMP_ACT_<ACTION>
+// value. The original action string is quoted in the error so an unknown
+// action can be traced back to the exact input instead of being treated as
+// allow.
 func parseAction(action string) (rspec.LinuxSeccompAction, error) {
 	a, ok := actions[action]
 	if !ok {
-		return "", fmt.Errorf("unrecognized action: %s", action)
+		return "", fmt.Errorf("unrecognized action: %q", action)
 	}
 	return a, nil
 }

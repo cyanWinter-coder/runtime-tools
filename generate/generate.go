@@ -217,6 +217,10 @@ func New(os string) (generator Generator, err error) {
 				Options:     []string{"nosuid", "noexec", "nodev", "ro"},
 			},
 		}
+		seccompProfile, err := seccomp.DefaultProfile(&config)
+		if err != nil {
+			return Generator{}, err
+		}
 		config.Linux = &rspec.Linux{
 			Resources: &rspec.LinuxResources{
 				Devices: []rspec.LinuxDeviceCgroup{
@@ -243,7 +247,7 @@ func New(os string) (generator Generator, err error) {
 					Type: "mount",
 				},
 			},
-			Seccomp: seccomp.DefaultProfile(&config),
+			Seccomp: seccompProfile,
 		}
 	case "freebsd":
 		config.Mounts = []rspec.Mount{

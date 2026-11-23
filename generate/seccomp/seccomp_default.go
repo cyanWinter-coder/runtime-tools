@@ -6,345 +6,22 @@ import (
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 )
 
-func arches() []rspec.Arch {
-	native := runtime.GOARCH
-
-	switch native {
-	case "amd64":
-		return []rspec.Arch{rspec.ArchX86_64, rspec.ArchX86, rspec.ArchX32}
-	case "arm64":
-		return []rspec.Arch{rspec.ArchARM, rspec.ArchAARCH64}
-	case "mips64":
-		return []rspec.Arch{rspec.ArchMIPS, rspec.ArchMIPS64, rspec.ArchMIPS64N32}
-	case "mips64n32":
-		return []rspec.Arch{rspec.ArchMIPS, rspec.ArchMIPS64, rspec.ArchMIPS64N32}
-	case "mipsel64":
-		return []rspec.Arch{rspec.ArchMIPSEL, rspec.ArchMIPSEL64, rspec.ArchMIPSEL64N32}
-	case "mipsel64n32":
-		return []rspec.Arch{rspec.ArchMIPSEL, rspec.ArchMIPSEL64, rspec.ArchMIPSEL64N32}
-	case "riscv64":
-		return []rspec.Arch{rspec.ArchRISCV64}
-	case "s390x":
-		return []rspec.Arch{rspec.ArchS390, rspec.ArchS390X}
-	default:
-		return []rspec.Arch{}
-	}
-}
-
 // DefaultProfile defines the whitelist for the default seccomp profile.
-func DefaultProfile(rs *rspec.Spec) *rspec.LinuxSeccomp {
+//
+// The profile is built deterministically: the syscall order is fixed by
+// defaultAllowedSyscalls, the capability driven rules are appended in sorted
+// capability order, and the architecture specific rules follow the
+// archSpecificSyscalls table. An architecture without an explicit ABI mapping
+// returns an error instead of a profile whose architecture list is empty.
+func DefaultProfile(rs *rspec.Spec) (*rspec.LinuxSeccomp, error) {
+	architectures, err := arches()
+	if err != nil {
+		return nil, err
+	}
+
 	syscalls := []rspec.LinuxSyscall{
 		{
-			Names: []string{
-				"accept",
-				"accept4",
-				"access",
-				"alarm",
-				"bind",
-				"brk",
-				"capget",
-				"capset",
-				"chdir",
-				"chmod",
-				"chown",
-				"chown32",
-				"clock_getres",
-				"clock_gettime",
-				"clock_nanosleep",
-				"close",
-				"connect",
-				"copy_file_range",
-				"creat",
-				"dup",
-				"dup2",
-				"dup3",
-				"epoll_create",
-				"epoll_create1",
-				"epoll_ctl",
-				"epoll_ctl_old",
-				"epoll_pwait",
-				"epoll_wait",
-				"epoll_wait_old",
-				"eventfd",
-				"eventfd2",
-				"execve",
-				"execveat",
-				"exit",
-				"exit_group",
-				"faccessat",
-				"fadvise64",
-				"fadvise64_64",
-				"fallocate",
-				"fanotify_mark",
-				"fchdir",
-				"fchmod",
-				"fchmodat",
-				"fchown",
-				"fchown32",
-				"fchownat",
-				"fcntl",
-				"fcntl64",
-				"fdatasync",
-				"fgetxattr",
-				"flistxattr",
-				"flock",
-				"fork",
-				"fremovexattr",
-				"fsetxattr",
-				"fstat",
-				"fstat64",
-				"fstatat64",
-				"fstatfs",
-				"fstatfs64",
-				"fsync",
-				"ftruncate",
-				"ftruncate64",
-				"futex",
-				"futimesat",
-				"getcpu",
-				"getcwd",
-				"getdents",
-				"getdents64",
-				"getegid",
-				"getegid32",
-				"geteuid",
-				"geteuid32",
-				"getgid",
-				"getgid32",
-				"getgroups",
-				"getgroups32",
-				"getitimer",
-				"getpeername",
-				"getpgid",
-				"getpgrp",
-				"getpid",
-				"getppid",
-				"getpriority",
-				"getrandom",
-				"getresgid",
-				"getresgid32",
-				"getresuid",
-				"getresuid32",
-				"getrlimit",
-				"get_robust_list",
-				"getrusage",
-				"getsid",
-				"getsockname",
-				"getsockopt",
-				"get_thread_area",
-				"gettid",
-				"gettimeofday",
-				"getuid",
-				"getuid32",
-				"getxattr",
-				"inotify_add_watch",
-				"inotify_init",
-				"inotify_init1",
-				"inotify_rm_watch",
-				"io_cancel",
-				"ioctl",
-				"io_destroy",
-				"io_getevents",
-				"ioprio_get",
-				"ioprio_set",
-				"io_setup",
-				"io_submit",
-				"ipc",
-				"kill",
-				"landlock_add_rule",
-				"landlock_create_ruleset",
-				"landlock_restrict_self",
-				"lchown",
-				"lchown32",
-				"lgetxattr",
-				"link",
-				"linkat",
-				"listen",
-				"listxattr",
-				"llistxattr",
-				"_llseek",
-				"lremovexattr",
-				"lseek",
-				"lsetxattr",
-				"lstat",
-				"lstat64",
-				"madvise",
-				"memfd_create",
-				"mincore",
-				"mkdir",
-				"mkdirat",
-				"mknod",
-				"mknodat",
-				"mlock",
-				"mlock2",
-				"mlockall",
-				"mmap",
-				"mmap2",
-				"mprotect",
-				"mq_getsetattr",
-				"mq_notify",
-				"mq_open",
-				"mq_timedreceive",
-				"mq_timedsend",
-				"mq_unlink",
-				"mremap",
-				"msgctl",
-				"msgget",
-				"msgrcv",
-				"msgsnd",
-				"msync",
-				"munlock",
-				"munlockall",
-				"munmap",
-				"nanosleep",
-				"newfstatat",
-				"_newselect",
-				"open",
-				"openat",
-				"pause",
-				"pipe",
-				"pipe2",
-				"poll",
-				"ppoll",
-				"prctl",
-				"pread64",
-				"preadv",
-				"prlimit64",
-				"pselect6",
-				"pwrite64",
-				"pwritev",
-				"read",
-				"readahead",
-				"readlink",
-				"readlinkat",
-				"readv",
-				"recv",
-				"recvfrom",
-				"recvmmsg",
-				"recvmsg",
-				"remap_file_pages",
-				"removexattr",
-				"rename",
-				"renameat",
-				"renameat2",
-				"restart_syscall",
-				"rmdir",
-				"rt_sigaction",
-				"rt_sigpending",
-				"rt_sigprocmask",
-				"rt_sigqueueinfo",
-				"rt_sigreturn",
-				"rt_sigsuspend",
-				"rt_sigtimedwait",
-				"rt_tgsigqueueinfo",
-				"sched_getaffinity",
-				"sched_getattr",
-				"sched_getparam",
-				"sched_get_priority_max",
-				"sched_get_priority_min",
-				"sched_getscheduler",
-				"sched_rr_get_interval",
-				"sched_setaffinity",
-				"sched_setattr",
-				"sched_setparam",
-				"sched_setscheduler",
-				"sched_yield",
-				"seccomp",
-				"select",
-				"semctl",
-				"semget",
-				"semop",
-				"semtimedop",
-				"send",
-				"sendfile",
-				"sendfile64",
-				"sendmmsg",
-				"sendmsg",
-				"sendto",
-				"setfsgid",
-				"setfsgid32",
-				"setfsuid",
-				"setfsuid32",
-				"setgid",
-				"setgid32",
-				"setgroups",
-				"setgroups32",
-				"setitimer",
-				"setpgid",
-				"setpriority",
-				"setregid",
-				"setregid32",
-				"setresgid",
-				"setresgid32",
-				"setresuid",
-				"setresuid32",
-				"setreuid",
-				"setreuid32",
-				"setrlimit",
-				"set_robust_list",
-				"setsid",
-				"setsockopt",
-				"set_thread_area",
-				"set_tid_address",
-				"setuid",
-				"setuid32",
-				"setxattr",
-				"shmat",
-				"shmctl",
-				"shmdt",
-				"shmget",
-				"shutdown",
-				"sigaltstack",
-				"signalfd",
-				"signalfd4",
-				"sigreturn",
-				"socket",
-				"socketcall",
-				"socketpair",
-				"splice",
-				"stat",
-				"stat64",
-				"statfs",
-				"statfs64",
-				"statx",
-				"symlink",
-				"symlinkat",
-				"sync",
-				"sync_file_range",
-				"syncfs",
-				"sysinfo",
-				"syslog",
-				"tee",
-				"tgkill",
-				"time",
-				"timer_create",
-				"timer_delete",
-				"timerfd_create",
-				"timerfd_gettime",
-				"timerfd_settime",
-				"timer_getoverrun",
-				"timer_gettime",
-				"timer_settime",
-				"times",
-				"tkill",
-				"truncate",
-				"truncate64",
-				"ugetrlimit",
-				"umask",
-				"uname",
-				"unlink",
-				"unlinkat",
-				"utime",
-				"utimensat",
-				"utimes",
-				"vfork",
-				"vmsplice",
-				"wait4",
-				"waitid",
-				"waitpid",
-				"write",
-				"writev",
-			},
+			Names:  append([]string(nil), defaultAllowedSyscalls...),
 			Action: rspec.ActAllow,
 			Args:   []rspec.LinuxSeccompArg{},
 		},
@@ -403,203 +80,111 @@ func DefaultProfile(rs *rspec.Spec) *rspec.LinuxSeccomp {
 		caps[cap] = true
 	}
 
-	for cap := range caps {
-		switch cap {
-		case "CAP_DAC_READ_SEARCH":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names:  []string{"open_by_handle_at"},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_ADMIN":
-			capSysAdmin = true
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names: []string{
-						"bpf",
-						"clone",
-						"fanotify_init",
-						"lookup_dcookie",
-						"mount",
-						"name_to_handle_at",
-						"perf_event_open",
-						"setdomainname",
-						"sethostname",
-						"setns",
-						"umount",
-						"umount2",
-						"unshare",
-					},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_BOOT":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names:  []string{"reboot"},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_CHROOT":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names:  []string{"chroot"},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_MODULE":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names: []string{
-						"delete_module",
-						"init_module",
-						"finit_module",
-						"query_module",
-					},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_PACCT":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names:  []string{"acct"},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_PTRACE":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names: []string{
-						"kcmp",
-						"process_vm_readv",
-						"process_vm_writev",
-						"ptrace",
-					},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_RAWIO":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names: []string{
-						"iopl",
-						"ioperm",
-					},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_TIME":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names: []string{
-						"settimeofday",
-						"stime",
-						"adjtimex",
-					},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
-		case "CAP_SYS_TTY_CONFIG":
-			syscalls = append(syscalls, []rspec.LinuxSyscall{
-				{
-					Names:  []string{"vhangup"},
-					Action: rspec.ActAllow,
-					Args:   []rspec.LinuxSeccompArg{},
-				},
-			}...)
+	// Iterate capabilities in a fixed order so identical specs produce
+	// identical syscall slices regardless of map randomisation.
+	for _, cap := range sortedCapNames() {
+		if !caps[cap] {
+			continue
 		}
+		names, ok := capGatedSyscalls[cap]
+		if !ok {
+			continue
+		}
+		if cap == "CAP_SYS_ADMIN" {
+			capSysAdmin = true
+		}
+		syscalls = append(syscalls, rspec.LinuxSyscall{
+			Names:  append([]string(nil), names...),
+			Action: rspec.ActAllow,
+			Args:   []rspec.LinuxSeccompArg{},
+		})
 	}
 
 	if !capSysAdmin {
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names:  []string{"clone"},
-				Action: rspec.ActAllow,
-				Args: []rspec.LinuxSeccompArg{
-					{
-						Index:    sysCloneFlagsIndex,
-						Value:    CloneNewNS | CloneNewUTS | CloneNewIPC | CloneNewUser | CloneNewPID | CloneNewNet | CloneNewCgroup,
-						ValueTwo: 0,
-						Op:       rspec.OpMaskedEqual,
-					},
+		syscalls = append(syscalls, rspec.LinuxSyscall{
+			Names:  []string{"clone"},
+			Action: rspec.ActAllow,
+			Args: []rspec.LinuxSeccompArg{
+				{
+					Index:    sysCloneFlagsIndex,
+					Value:    CloneNewNS | CloneNewUTS | CloneNewIPC | CloneNewUser | CloneNewPID | CloneNewNet | CloneNewCgroup,
+					ValueTwo: 0,
+					Op:       rspec.OpMaskedEqual,
 				},
 			},
-		}...)
+		})
 	}
 
-	arch := runtime.GOARCH
-	switch arch {
-	case "arm", "arm64":
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names: []string{
-					"breakpoint",
-					"cacheflush",
-					"set_tls",
-				},
-				Action: rspec.ActAllow,
-				Args:   []rspec.LinuxSeccompArg{},
-			},
-		}...)
-	case "amd64", "x32":
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names:  []string{"arch_prctl"},
-				Action: rspec.ActAllow,
-				Args:   []rspec.LinuxSeccompArg{},
-			},
-		}...)
-		fallthrough
-	case "x86":
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names:  []string{"modify_ldt"},
-				Action: rspec.ActAllow,
-				Args:   []rspec.LinuxSeccompArg{},
-			},
-		}...)
-	case "s390", "s390x":
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names: []string{
-					"s390_pci_mmio_read",
-					"s390_pci_mmio_write",
-					"s390_runtime_instr",
-				},
-				Action: rspec.ActAllow,
-				Args:   []rspec.LinuxSeccompArg{},
-			},
-		}...)
-		/* Flags parameter of the clone syscall is the 2nd on s390 */
-		syscalls = append(syscalls, []rspec.LinuxSyscall{
-			{
-				Names:  []string{"clone"},
-				Action: rspec.ActAllow,
-				Args: []rspec.LinuxSeccompArg{
-					{
-						Index:    1,
-						Value:    2080505856,
-						ValueTwo: 0,
-						Op:       rspec.OpMaskedEqual,
-					},
+	archSyscalls, cloneArgIndex, err := archSpecificRules(runtime.GOARCH)
+	if err != nil {
+		return nil, err
+	}
+	syscalls = append(syscalls, archSyscalls...)
+	if cloneArgIndex >= 0 {
+		syscalls = append(syscalls, rspec.LinuxSyscall{
+			Names:  []string{"clone"},
+			Action: rspec.ActAllow,
+			Args: []rspec.LinuxSeccompArg{
+				{
+					// Flags parameter of the clone syscall is the 2nd on s390.
+					Index:    uint(cloneArgIndex),
+					Value:    2080505856,
+					ValueTwo: 0,
+					Op:       rspec.OpMaskedEqual,
 				},
 			},
-		}...)
+		})
 	}
 
 	return &rspec.LinuxSeccomp{
 		DefaultAction: rspec.ActErrno,
-		Architectures: arches(),
+		Architectures: architectures,
 		Syscalls:      syscalls,
+	}, nil
+}
+
+// archSpecificRules returns the extra syscall rules that only apply on the
+// given Go architecture, plus the clone flags argument index when the
+// architecture places it outside the default position (-1 otherwise). The
+// returned slice is empty for architectures without architecture specific
+// rules, which is not an error; an unknown architecture is.
+func archSpecificRules(goarch string) ([]rspec.LinuxSyscall, int, error) {
+	switch goarch {
+	case "arm", "arm64":
+		return []rspec.LinuxSyscall{
+			{
+				Names:  append([]string(nil), archSpecificSyscalls["arm"]...),
+				Action: rspec.ActAllow,
+				Args:   []rspec.LinuxSeccompArg{},
+			},
+		}, -1, nil
+	case "386", "amd64":
+		rules := []rspec.LinuxSyscall{}
+		if goarch == "amd64" {
+			rules = append(rules, rspec.LinuxSyscall{
+				Names:  []string{"arch_prctl"},
+				Action: rspec.ActAllow,
+				Args:   []rspec.LinuxSeccompArg{},
+			})
+		}
+		rules = append(rules, rspec.LinuxSyscall{
+			Names:  []string{"modify_ldt"},
+			Action: rspec.ActAllow,
+			Args:   []rspec.LinuxSeccompArg{},
+		})
+		return rules, -1, nil
+	case "s390", "s390x":
+		return []rspec.LinuxSyscall{
+			{
+				Names:  append([]string(nil), archSpecificSyscalls["s390"]...),
+				Action: rspec.ActAllow,
+				Args:   []rspec.LinuxSeccompArg{},
+			},
+		}, 1, nil
+	default:
+		if _, err := nativeArches(goarch); err != nil {
+			return nil, -1, err
+		}
+		return nil, -1, nil
 	}
 }
