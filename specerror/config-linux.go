@@ -62,6 +62,18 @@ const (
 	MaskedPathsAbs
 	// ReadonlyPathsAbs represents "readonlyPaths (array of strings, OPTIONAL) will set the provided paths as readonly inside the container. The values MUST be absolute paths in the container namespace."
 	ReadonlyPathsAbs
+	// RootfsPathOutsideBundle represents "While the artifacts MUST all be present in a single directory on the local filesystem, a rootfs which resolves (following symlinks) to a path outside that declared bundle root escapes the bundle."
+	RootfsPathOutsideBundle
+	// MountDestOutsideRootfs represents "A mount destination is a path inside the container rootfs; after resolving every symlink it MUST remain within the rootfs rather than pointing at host directories outside it."
+	MountDestOutsideRootfs
+	// UserNSMappingInvalid represents "Each user namespace mapping entry MUST have a non-zero size and an ID range that fits into the 32-bit ID space; the kernel rejects zero-sized or overflowing entries."
+	UserNSMappingInvalid
+	// UserNSMappingOverlap represents "The runtime MUST generate an error when two user namespace mapping entries cover overlapping container or host ID ranges."
+	UserNSMappingOverlap
+	// UserNSIDNotMapped represents "When user namespace mappings are specified, the container process uid/gid MUST be covered by one of the mapping ranges."
+	UserNSIDNotMapped
+	// MaskedReadonlyOrderConflict represents "maskedPaths and readonlyPaths are applied in the listed order; a later entry MUST NOT be an ancestor of an earlier one, otherwise it would override the earlier entry."
+	MaskedReadonlyOrderConflict
 )
 
 var (
@@ -131,4 +143,10 @@ func init() {
 	register(SeccSyscallsNamesRequired, rfc2119.Must, seccompRef)
 	register(MaskedPathsAbs, rfc2119.Must, maskedPathsRef)
 	register(ReadonlyPathsAbs, rfc2119.Must, readonlyPathsRef)
+	register(RootfsPathOutsideBundle, rfc2119.Must, containerFormatRef)
+	register(MountDestOutsideRootfs, rfc2119.Must, mountsRef)
+	register(UserNSMappingInvalid, rfc2119.Must, userNamespaceMappingsRef)
+	register(UserNSMappingOverlap, rfc2119.Must, userNamespaceMappingsRef)
+	register(UserNSIDNotMapped, rfc2119.Must, userNamespaceMappingsRef)
+	register(MaskedReadonlyOrderConflict, rfc2119.Must, maskedPathsRef)
 }

@@ -114,6 +114,7 @@ func (v *Validator) CheckAll() error {
 	errs = multierror.Append(errs, v.CheckMounts())
 	errs = multierror.Append(errs, v.CheckProcess())
 	errs = multierror.Append(errs, v.CheckLinux())
+	errs = multierror.Append(errs, v.CheckRootless())
 	errs = multierror.Append(errs, v.CheckAnnotations())
 	if v.platform == "linux" || v.platform == "solaris" {
 		errs = multierror.Append(errs, v.CheckHooks())
