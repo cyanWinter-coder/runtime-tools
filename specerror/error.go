@@ -3,6 +3,7 @@
 package specerror
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/go-multierror"
@@ -107,6 +108,13 @@ func NewError(code Code, err error, version string) error {
 	}
 }
 
+// codeCarrier is implemented by errors that wrap an Error and only add
+// structured context (such as a field path); it lets FindError keep
+// matching codes through such wrappers.
+type codeCarrier interface {
+	Code() Code
+}
+
 // FindError finds an error from a source error (multiple error) and
 // returns the error code if found.
 // If the source error is nil or empty, return NonError.
@@ -121,12 +129,24 @@ func FindError(err error, code Code) Code {
 			return NonError
 		}
 		for _, e := range merr.Errors {
-			if rfcErr, ok := e.(*Error); ok {
-				if rfcErr.Code == code {
-					return code
-				}
+			if findCode(e) == code {
+				return code
 			}
 		}
+	}
+	return NonRFCError
+}
+
+// findCode extracts the spec Code from a direct *Error or from any
+// wrapper implementing codeCarrier / Unwrap.
+func findCode(err error) Code {
+	var carrier codeCarrier
+	if errors.As(err, &carrier) {
+		return carrier.Code()
+	}
+	var rfcErr *Error
+	if errors.As(err, &rfcErr) {
+		return rfcErr.Code
 	}
 	return NonRFCError
 }
