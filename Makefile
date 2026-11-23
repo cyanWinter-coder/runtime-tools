@@ -24,6 +24,7 @@ runtimetest:
 man:
 	go-md2man -in "man/oci-runtime-tool.1.md" -out "oci-runtime-tool.1"
 	go-md2man -in "man/oci-runtime-tool-generate.1.md" -out "oci-runtime-tool-generate.1"
+	go-md2man -in "man/oci-runtime-tool-generate-bundle.1.md" -out "oci-runtime-tool-generate-bundle.1"
 	go-md2man -in "man/oci-runtime-tool-validate.1.md" -out "oci-runtime-tool-validate.1"
 
 install: man

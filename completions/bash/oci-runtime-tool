@@ -525,6 +525,18 @@ _oci-runtime-tool_generate() {
 	esac
 }
 
+_oci-runtime-tool_generate-bundle() {
+	# generate-bundle accepts the same options as generate (except
+	# --output), plus --rootfs which takes a directory.
+	case "$prev" in
+		--rootfs)
+			_filedir -d
+			return
+			;;
+	esac
+	_oci-runtime-tool_generate
+}
+
 _oci-runtime-tool() {
 	local previous_extglob_setting=$(shopt -p extglob)
 	shopt -s extglob
@@ -532,6 +544,7 @@ _oci-runtime-tool() {
 	local commands=(
 		validate
 		generate
+		generate-bundle
 	)
 
 	COMPREPLY=()

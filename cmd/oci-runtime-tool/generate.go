@@ -196,6 +196,18 @@ var generateCommand = cli.Command{
 }
 
 func setupSpec(g *generate.Generator, context *cli.Context) error {
+	return setupSpecMode(g, context, false)
+}
+
+// setupSpecExplicit is like setupSpec, but flag defaults are not
+// applied: only flags the user explicitly set override the
+// configuration, so default flag values cannot clobber template
+// content.
+func setupSpecExplicit(g *generate.Generator, context *cli.Context) error {
+	return setupSpecMode(g, context, true)
+}
+
+func setupSpecMode(g *generate.Generator, context *cli.Context, explicitOnly bool) error {
 	if context.GlobalBool("host-specific") {
 		g.HostSpecific = true
 	}
@@ -227,7 +239,9 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		}
 	}
 
-	g.SetRootPath(context.String("rootfs-path"))
+	if !explicitOnly || context.IsSet("rootfs-path") {
+		g.SetRootPath(context.String("rootfs-path"))
+	}
 
 	if context.IsSet("rootfs-readonly") {
 		g.SetRootReadonly(context.Bool("rootfs-readonly"))
@@ -253,7 +267,9 @@ func setupSpec(g *generate.Generator, context *cli.Context) error {
 		g.SetProcessSelinuxLabel(context.String("linux-selinux-label"))
 	}
 
-	g.SetProcessCwd(context.String("process-cwd"))
+	if !explicitOnly || context.IsSet("process-cwd") {
+		g.SetProcessCwd(context.String("process-cwd"))
+	}
 
 	if context.IsSet("linux-apparmor") {
 		g.SetProcessApparmorProfile(context.String("linux-apparmor"))
