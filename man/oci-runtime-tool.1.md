@@ -48,8 +48,12 @@ oci-runtime-tool is a collection of tools for working with the [OCI runtime spec
   Generating OCI runtime spec configuration files
   See **oci-runtime-tool-generate**(1) for full documentation on the **generate** command.
 
+**migrate**
+  Migrating an OCI runtime configuration between specification versions
+  See **oci-runtime-tool-migrate**(1) for full documentation on the **migrate** command.
+
 # SEE ALSO
-**oci-runtime-tool-validate**(1), **oci-runtime-tool-generate**(1)
+**oci-runtime-tool-validate**(1), **oci-runtime-tool-generate**(1), **oci-runtime-tool-migrate**(1)
 
 # HISTORY
 April 2016, Originally compiled by Daniel Walsh (dwalsh at redhat dot com)

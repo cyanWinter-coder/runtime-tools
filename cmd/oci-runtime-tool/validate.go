@@ -14,6 +14,7 @@ import (
 var bundleValidateFlags = []cli.Flag{
 	cli.StringFlag{Name: "path", Value: ".", Usage: "path to a bundle"},
 	cli.StringFlag{Name: "platform", Value: runtime.GOOS, Usage: "platform of the target bundle (linux, windows, solaris)"},
+	cli.BoolFlag{Name: "migrate", Usage: "migrate configurations targeting older spec versions to the current version before validating"},
 }
 
 var bundleValidateCommand = cli.Command{
@@ -31,7 +32,15 @@ var bundleValidateCommand = cli.Command{
 		}
 		inputPath := context.String("path")
 		platform := context.String("platform")
-		v, err := validate.NewValidatorFromPath(inputPath, hostSpecific, platform)
+
+		var v validate.Validator
+		if context.Bool("migrate") {
+			// Old-version entry point: canonicalize and migrate through
+			// the shared migration object before running the same checks.
+			v, err = validate.NewValidatorFromMigratedPath(inputPath, hostSpecific, platform)
+		} else {
+			v, err = validate.NewValidatorFromPath(inputPath, hostSpecific, platform)
+		}
 		if err != nil {
 			return err
 		}

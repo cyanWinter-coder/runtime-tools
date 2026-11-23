@@ -22,6 +22,13 @@ Validate an OCI bundle
   Platform of the target bundle. (linux, windows, solaris) The default is host platform.
   It will be overwritten by the host platform if the global option '--host-specific' was set.
 
+**--migrate**
+  Migrate a configuration targeting an older supported specification
+  version to the current version before validating. Migration and
+  validation share the same normalized configuration object. A
+  configuration using fields the current version cannot represent is
+  refused rather than having those fields dropped silently.
+
 # SEE ALSO
 **oci-runtime-tool**(1)
 
